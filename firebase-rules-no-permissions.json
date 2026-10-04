@@ -1,0 +1,75 @@
+{
+  "rules": {
+    "usernames": {
+      ".read": true,
+      "$username": {
+        ".write": "auth != null && (root.child('admins').child(auth.uid).val() == true || ((!data.exists() || data.val() == auth.uid) && newData.val() == auth.uid))"
+      }
+    },
+    "users": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+    "admins": {
+      ".read": "auth != null",
+      "$uid": { ".write": false }
+    },
+    "config": {
+      ".read": true,
+      "roomCreationOpenToAll": {
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() == true"
+      }
+    },
+    "rooms": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$roomCode": {
+        "meta": {
+          ".read": "auth != null",
+          ".write": "auth != null && ((!data.exists() && newData.child('hostUid').val() == auth.uid && (root.child('admins/' + auth.uid).exists() || root.child('config/roomCreationOpenToAll').val() == true)) || data.child('hostUid').val() == auth.uid)"
+        },
+        "members": {
+          ".read": "auth != null",
+          "$memberUid": {
+            ".write": "auth != null && !root.child('rooms/' + $roomCode + '/blocklist/' + auth.uid).exists() && (auth.uid == $memberUid || root.child('rooms/' + $roomCode + '/meta/hostUid').val() == auth.uid)"
+          }
+        },
+        "blocklist": {
+          ".read": "auth != null && root.child('rooms/' + $roomCode + '/members/' + auth.uid).exists()",
+          "$blockedUid": {
+            ".write": "auth != null && root.child('rooms/' + $roomCode + '/meta/hostUid').val() == auth.uid"
+          }
+        },
+        "playlist": {
+          ".read": "auth != null && root.child('rooms/' + $roomCode + '/members/' + auth.uid).exists()",
+          ".write": false,
+          "$itemId": {
+            ".write": "auth != null && root.child('rooms/' + $roomCode + '/members/' + auth.uid).exists() && (root.child('rooms/' + $roomCode + '/meta/hostUid').val() == auth.uid || (data.exists() && ((!newData.exists() && root.child('rooms/' + $roomCode + '/members/' + auth.uid + '/permissions/removeVideo').val() == true) || (newData.exists() && root.child('rooms/' + $roomCode + '/members/' + auth.uid + '/permissions/editOrder').val() == true))) || (!data.exists() && (root.child('rooms/' + $roomCode + '/meta/allowMembersToAddVideos').val() == true || root.child('rooms/' + $roomCode + '/members/' + auth.uid + '/permissions/addVideo').val() == true))) && (root.child('rooms/' + $roomCode + '/meta/expiresAt').val() == 0 || now < root.child('rooms/' + $roomCode + '/meta/expiresAt').val())",
+            ".validate": "newData.exists() ? newData.hasChildren(['id', 'videoId', 'title', 'thumbnailUrl', 'addedByUid', 'addedByUsername', 'addedAt', 'order']) : true"
+          },
+          ".indexOn": ["order", "addedAt"]
+        },
+        "playerState": {
+          ".read": "auth != null && root.child('rooms/' + $roomCode + '/members/' + auth.uid).exists()",
+          ".write": "auth != null && root.child('rooms/' + $roomCode + '/members/' + auth.uid).exists() && (root.child('rooms/' + $roomCode + '/meta/expiresAt').val() == 0 || now < root.child('rooms/' + $roomCode + '/meta/expiresAt').val())"
+        },
+        "chat": {
+          ".read": "auth != null && root.child('rooms/' + $roomCode + '/members/' + auth.uid).exists()",
+          ".write": "auth != null && root.child('rooms/' + $roomCode + '/members/' + auth.uid).exists() && (root.child('rooms/' + $roomCode + '/meta/expiresAt').val() == 0 || now < root.child('rooms/' + $roomCode + '/meta/expiresAt').val())",
+          ".indexOn": ["timestamp"]
+        },
+        "sessions": {
+  ".read": "auth != null",
+  "$uid": {
+    ".write": "auth != null && auth.uid == $uid"
+  }
+}
+
+      }
+    }
+  }
+}
