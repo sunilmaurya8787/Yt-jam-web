@@ -1,48 +1,37 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useRoomPlayer } from "../context/RoomPlayerContext.jsx";
 
-// Always mounted in Room.jsx, regardless of active tab — this is what
-// keeps the video (and its Firebase-synced playback) alive when the user
-// switches to Chat/People/Profile. Only the CSS wrapper class changes
-// between the two modes; the <div> the YT iframe lives in never unmounts.
-export default function PlayerBox({ mode, onExpand, tab }) {
+/**
+ * PlayerBox remains mounted persistently at a stable DOM location
+ * to ensure the YouTube iframe and its Firebase sync loop are NEVER destroyed
+ * when switching between tabs (Chat, Queue, People, Settings).
+ */
+export default function PlayerBox({ mode = "big", onExpand, onToggleMinimize }) {
   const { playerDivRef, playerState, localTime, duration, canControlPlayback, handlePlayPause } = useRoomPlayer();
   const [position, setPosition] = useState(() => ({
-    bottom: 104,
-    right: 16
+    bottom: 24,
+    right: 24
   }));
   const [showControls, setShowControls] = useState(false);
-  const [showMiniInfo, setShowMiniInfo] = useState(false);
   const dragRef = useRef(null);
   const movedRef = useRef(false);
-  const miniInfoTimeoutRef = useRef(null);
 
-  const progress = duration ? localTime / duration : 0;
-  const forceVisibleControls = !canControlPlayback;
+  const progress = duration ? (localTime / duration) * 100 : 0;
+  const isMini = mode === "mini";
 
   useEffect(() => {
-    if (!showControls || mode !== "mini") return undefined;
-    const timeoutId = setTimeout(() => setShowControls(false), 5000);
+    if (!showControls || !isMini) return undefined;
+    const timeoutId = setTimeout(() => setShowControls(false), 4000);
     return () => clearTimeout(timeoutId);
-  }, [showControls, mode]);
-
-  useEffect(() => {
-    if (!showMiniInfo || mode !== "mini") return undefined;
-    if (miniInfoTimeoutRef.current) clearTimeout(miniInfoTimeoutRef.current);
-    miniInfoTimeoutRef.current = setTimeout(() => setShowMiniInfo(false), 5000);
-    return () => {
-      if (miniInfoTimeoutRef.current) clearTimeout(miniInfoTimeoutRef.current);
-    };
-  }, [showMiniInfo, mode]);
+  }, [showControls, isMini]);
 
   function handlePointerDown(event) {
-    if (mode !== "mini") return;
+    if (!isMini) return;
     dragRef.current = {
       startX: event.clientX,
       startY: event.clientY,
       startBottom: position.bottom,
-      startRight: position.right,
-      moved: false
+      startRight: position.right
     };
     movedRef.current = false;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -51,10 +40,11 @@ export default function PlayerBox({ mode, onExpand, tab }) {
   function handlePointerMove(event) {
     if (!dragRef.current) return;
     const drag = dragRef.current;
-    const nextBottom = Math.max(12, Math.min(window.innerHeight - 200, drag.startBottom - event.clientY + drag.startY));
-    const nextRight = Math.max(12, Math.min(window.innerWidth - 180, drag.startRight - event.clientX + drag.startX));
-    if (Math.abs(event.clientX - drag.startX) > 4 || Math.abs(event.clientY - drag.startY) > 4) drag.moved = true;
-    movedRef.current = drag.moved;
+    const nextBottom = Math.max(16, Math.min(window.innerHeight - 160, drag.startBottom - event.clientY + drag.startY));
+    const nextRight = Math.max(16, Math.min(window.innerWidth - 220, drag.startRight - event.clientX + drag.startX));
+    if (Math.abs(event.clientX - drag.startX) > 4 || Math.abs(event.clientY - drag.startY) > 4) {
+      movedRef.current = true;
+    }
     setPosition({ bottom: nextBottom, right: nextRight });
   }
 
@@ -62,59 +52,74 @@ export default function PlayerBox({ mode, onExpand, tab }) {
     dragRef.current = null;
   }
 
-  function handleClick() {
-    if (!movedRef.current) onExpand();
+  function handleOverlayClick() {
+    if (!movedRef.current) {
+      if (onExpand) onExpand();
+    }
     movedRef.current = false;
   }
 
-  const positionStyle = mode === "mini" ? { bottom: position.bottom, right: position.right } : undefined;
-
-  const floatingStyle = mode === "big" && tab === "chat" ? {
-    position: "fixed",
-    top: 110,
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: "min(calc(100% - 36px), 720px)",
-    maxWidth: "720px",
-    zIndex: 40
-  } : undefined;
+  const miniStyle = isMini ? { bottom: position.bottom, right: position.right } : undefined;
 
   return (
     <div
-      className={mode === "big" ? "player-slot player-slot-big" : "player-slot player-slot-mini"}
-      style={floatingStyle || positionStyle}
+      className={`player-container ${isMini ? "player-mini" : "player-stage"}`}
+      style={miniStyle}
     >
-      <div className="player-iframe-mount" ref={playerDivRef} />
+      <div className="player-viewport">
+        {/* The persistent mount node for YouTube iframe */}
+        <div className="player-iframe-mount" ref={playerDivRef} />
 
-      {mode === "mini" && (
+        {/* Ambient video reflection glow effect behind player on desktop */}
+        {!isMini && <div className="player-ambient-glow" aria-hidden="true" />}
+      </div>
+
+      {isMini && (
         <div
-          className={`mini-player-overlay ${showControls || forceVisibleControls ? "controls-visible" : ""}`}
-          onClick={() => {
-            setShowControls(true);
-            setShowMiniInfo(true);
-          }}
+          className={`mini-overlay ${showControls ? "active" : ""}`}
+          onClick={handleOverlayClick}
+          onMouseEnter={() => setShowControls(true)}
+          onMouseLeave={() => setShowControls(false)}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
         >
-          {showMiniInfo && <div className="mini-player-bottom">
-            <div className="mini-player-info">
-              <div className="mini-player-title">
-                {playerState?.currentVideoTitle || "Nothing playing"}
-              </div>
-              <div className="mini-progress">
-                <div className="mini-progress-fill" style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }} />
-              </div>
-            </div>
-            {canControlPlayback && <button
-              className="mini-play-btn"
-              onClick={(e) => { e.stopPropagation(); handlePlayPause(); setShowControls(true); }}
-              aria-label="Play or pause"
+          <div className="mini-top-bar">
+            <span className="mini-title">{playerState?.currentVideoTitle || "Playing Video"}</span>
+            <button
+              className="mini-expand-btn"
+              title="Expand Player"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onExpand) onExpand();
+              }}
             >
-              {playerState?.isPlaying ? "⏸" : "▶"}
-            </button>}
-          </div>}
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 3 21 3 21 9" />
+                <polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="mini-bottom-bar">
+            {canControlPlayback && (
+              <button
+                className="mini-play-toggle"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePlayPause();
+                }}
+              >
+                {playerState?.isPlaying ? "⏸" : "▶"}
+              </button>
+            )}
+            <div className="mini-progress-bar">
+              <div className="mini-progress-fill" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
         </div>
       )}
     </div>

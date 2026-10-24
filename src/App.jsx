@@ -1,20 +1,55 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import SignIn from "./pages/SignIn.jsx";
 import SignUp from "./pages/SignUp.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import Lobby from "./pages/Lobby.jsx";
 import Room from "./pages/Room.jsx";
+import { validateActiveRoom } from "./utils/roomRepository.js";
 
 function Shell() {
   const { user } = useAuth();
   const [authScreen, setAuthScreen] = useState("signin"); // signin | signup | forgot
   const [roomCode, setRoomCode] = useState(null);
+  const [isCheckingActive, setIsCheckingActive] = useState(true);
 
-  if (user === undefined) {
+  useEffect(() => {
+    if (!user) {
+      setIsCheckingActive(false);
+      return;
+    }
+
+    let isMounted = true;
+    setIsCheckingActive(true);
+
+    validateActiveRoom(user.uid)
+      .then((active) => {
+        if (!isMounted) return;
+        if (active && active.roomCode) {
+          setRoomCode(active.roomCode);
+        }
+      })
+      .catch((err) => {
+        console.error("Auto-join check failed:", err);
+      })
+      .finally(() => {
+        if (isMounted) setIsCheckingActive(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  if (user === undefined || (user && isCheckingActive && !roomCode)) {
     return (
-      <div className="screen">
-        <div className="spin" style={{ width: 24, height: 24 }} />
+      <div className="room-loading-screen">
+        <div className="spin" style={{ width: 32, height: 32 }} />
+        {isCheckingActive && (
+          <p style={{ marginTop: 14, color: "var(--text-dim)", fontSize: 14 }}>
+            Checking your active Jam...
+          </p>
+        )}
       </div>
     );
   }

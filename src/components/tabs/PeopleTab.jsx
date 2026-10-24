@@ -9,8 +9,23 @@ import {
   updateRoomMeta
 } from "../../utils/roomRepository.js";
 
+function getAvatarGradient(str = "") {
+  const gradients = [
+    "linear-gradient(135deg, #ef4444, #f97316)",
+    "linear-gradient(135deg, #8b5cf6, #ec4899)",
+    "linear-gradient(135deg, #06b6d4, #3b82f6)",
+    "linear-gradient(135deg, #10b981, #059669)",
+    "linear-gradient(135deg, #f59e0b, #d97706)"
+  ];
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return gradients[Math.abs(hash) % gradients.length];
+}
+
 export default function PeopleTab({ roomCode, isRoomHost, allowMembersToAddVideos }) {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [members, setMembers] = useState({});
   const [blockedMembers, setBlockedMembers] = useState({});
   const [selectedMember, setSelectedMember] = useState(null);
@@ -47,7 +62,7 @@ export default function PeopleTab({ roomCode, isRoomHost, allowMembersToAddVideo
     try {
       await updateRoomMeta(roomCode, { allowMembersToAddVideos: value });
     } catch (err) {
-      setRoomSettingError(err.message || "Couldn't update the room setting.");
+      setRoomSettingError(err.message || "Couldn't update room setting.");
     } finally {
       setSavingRoomSetting(false);
     }
@@ -61,7 +76,7 @@ export default function PeopleTab({ roomCode, isRoomHost, allowMembersToAddVideo
       await kickAndBlockMember(roomCode, uid);
       setSelectedMember(null);
     } catch (err) {
-      setPermissionError(err.message || "Couldn't kick and block this member.");
+      setPermissionError(err.message || "Couldn't kick and block member.");
     } finally {
       setModerationBusy(false);
     }
@@ -74,150 +89,222 @@ export default function PeopleTab({ roomCode, isRoomHost, allowMembersToAddVideo
     try {
       await unblockMemberFromRoom(roomCode, uid);
     } catch (err) {
-      setPermissionError(err.message || "Couldn't unblock this member.");
+      setPermissionError(err.message || "Couldn't unblock member.");
     } finally {
       setModerationBusy(false);
     }
   }
 
   return (
-    <div>
-      <div className="info-banner">
-        <div className="ic">
-          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="9" cy="8" r="3" />
-            <path d="M3 19c.5-3 2.5-5 6-5s5.5 2 6 5" />
-            <path d="M16 5.5a3 3 0 0 1 0 5.8M17 14c2.2.5 3.5 2.1 4 4" />
+    <div className="tab-pane-content people-pane">
+      {/* Banner */}
+      <div className="info-glass-card">
+        <div className="info-card-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
           </svg>
         </div>
-        <div>
-          <h4>Room Members</h4>
-          <p>{isHost ? "Control shared video access and manage member permissions." : "See everyone sharing this Jam in real time."}</p>
+        <div className="info-card-text">
+          <h4>Room Members ({entries.length})</h4>
+          <p>{isHost ? "You are the host. Tap any member to adjust their permissions or moderate." : "All members currently synchronized to this Jam."}</p>
         </div>
       </div>
 
-      {isHost && <div className="admin-setting">
-        <div>
-          <strong>Allow all members to add videos</strong>
-          <div className="hint">Members can add videos without individual approval.</div>
-          {roomSettingError && <div className="error-text">{roomSettingError}</div>}
-        </div>
-        <label className="switch">
-          <input
-            type="checkbox"
-            checked={allowMembersToAddVideos}
-            disabled={savingRoomSetting}
-            onChange={(event) => toggleRoomSetting(event.target.checked)}
-          />
-          <span className="track" />
-        </label>
-      </div>}
-
+      {/* Host Quick Setting */}
       {isHost && (
-        <div className="people-subtabs" style={{ marginTop: 12, marginBottom: 12 }}>
+        <div className="setting-glass-row">
+          <div>
+            <strong>Allow All Members to Add Videos</strong>
+            <p className="setting-desc">When enabled, anyone in the room can add videos to the queue.</p>
+          </div>
+          <label className="toggle-switch">
+            <input
+              type="checkbox"
+              checked={Boolean(allowMembersToAddVideos)}
+              disabled={savingRoomSetting}
+              onChange={(e) => toggleRoomSetting(e.target.checked)}
+            />
+            <span className="toggle-slider" />
+          </label>
+        </div>
+      )}
+
+      {roomSettingError && <div className="error-alert">{roomSettingError}</div>}
+
+      {/* Subtabs for Host */}
+      {isHost && blockedEntries.length > 0 && (
+        <div className="segmented-subtabs">
           <button
-            className={activeSection === "members" ? "active" : ""}
+            className={`subtab-btn ${activeSection === "members" ? "active" : ""}`}
             onClick={() => setActiveSection("members")}
-            type="button"
           >
-            Members ({entries.length})
+            Active ({entries.length})
           </button>
           <button
-            className={activeSection === "blocklist" ? "active" : ""}
-            onClick={() => setActiveSection("blocklist")}
-            type="button"
+            className={`subtab-btn ${activeSection === "blocked" ? "active" : ""}`}
+            onClick={() => setActiveSection("blocked")}
           >
-            Blocklist ({blockedEntries.length})
+            Blocked ({blockedEntries.length})
           </button>
         </div>
       )}
 
-      {activeSection === "members" && (
-        entries.length === 0 ? (
-          <div className="empty-block">No members in this room yet.</div>
-        ) : (
-          entries.map(([uid, m]) => (
-            <div
-              key={uid}
-              className={`member-row ${isHost && !m.isHost ? "member-row-manageable" : ""}`}
-              onClick={() => isHost && !m.isHost && setSelectedMember({ uid, member: m })}
-            >
-              <div className="avatar">{(m.name || "?").charAt(0).toUpperCase()}</div>
-              <div className="info">
-                <div className="n">
-                  {m.name}
-                  {uid === user?.uid && <span className="tag you">YOU</span>}
-                </div>
-                <div className="u">@{m.username}</div>
-              </div>
-              {m.isHost && <span className="tag dj">★ HOST</span>}
-              {isHost && !m.isHost && <span className="tag manage-tag">MANAGE</span>}
-            </div>
-          ))
-        )
-      )}
+      {/* List */}
+      <div className="people-scroll-list">
+        {activeSection === "members" ? (
+          entries.map(([uid, member]) => {
+            const isMe = uid === user?.uid;
+            const displayName = member.name || member.username || "Jammer";
+            const initial = displayName.charAt(0).toUpperCase();
+            const perms = member.permissions || {};
+            const isDJ = perms.addVideo || perms.changeVideo || perms.editOrder || perms.removeVideo;
 
-      {activeSection === "blocklist" && isHost && (
-        blockedEntries.length === 0 ? (
-          <div className="empty-block">No blocked members in this room.</div>
-        ) : (
-          blockedEntries.map(([uid, member]) => (
-            <div key={uid} className="member-row" style={{ justifyContent: "space-between" }}>
-              <div className="info" style={{ flex: 1 }}>
-                <div className="n">{member.name || "Blocked member"}</div>
-                <div className="u">@{member.username || "blocked-user"}</div>
+            return (
+              <div
+                key={uid}
+                className="member-item-row"
+                onClick={() => isHost && !isMe && setSelectedMember({ uid, member })}
+                style={{ cursor: isHost && !isMe ? "pointer" : "default" }}
+              >
+                <div className="member-avatar" style={{ background: getAvatarGradient(displayName) }}>
+                  {initial}
+                  {member.isOnline && (
+                    <span className="online-status-dot" title="Online" aria-label="Online" />
+                  )}
+                </div>
+                <div className="member-details">
+                  <div className="member-name-row">
+                    <span className="member-display-name">{displayName}</span>
+                    {isMe && <span className="chip chip-you">YOU</span>}
+                    {member.isHost && <span className="chip chip-host">★ HOST</span>}
+                    {!member.isHost && isDJ && <span className="chip chip-dj">DJ</span>}
+                  </div>
+                  <div className="member-handle">@{member.username || "user"}</div>
+                </div>
+
+                {isHost && !isMe && (
+                  <button className="queue-btn" title="Member settings">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="1" />
+                      <circle cx="19" cy="12" r="1" />
+                      <circle cx="5" cy="12" r="1" />
+                    </svg>
+                  </button>
+                )}
               </div>
-              <button className="btn btn-outline btn-sm" disabled={moderationBusy} onClick={() => handleUnblock(uid)}>
+            );
+          })
+        ) : (
+          blockedEntries.map(([uid, info]) => (
+            <div key={uid} className="member-item-row">
+              <div className="member-avatar" style={{ background: "#475569" }}>
+                ?
+              </div>
+              <div className="member-details">
+                <div className="member-display-name">{info?.username ? `@${info.username}` : `UID: ${uid.slice(0, 8)}...`}</div>
+                <div className="member-handle" style={{ color: "var(--danger)" }}>Blocked from room</div>
+              </div>
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => handleUnblock(uid)}
+                disabled={moderationBusy}
+              >
                 Unblock
               </button>
             </div>
           ))
-        )
-      )}
+        )}
+      </div>
 
+      {/* Permissions Modal */}
       {selectedMember && (
-        <div className="modal-overlay" onClick={() => setSelectedMember(null)}>
-          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
-            <h3>Manage @{selectedMember.member.username || profile?.username || "member"}</h3>
-            <p>Choose what this member can do in the shared Jam.</p>
-            {[
-              ["editOrder", "Reorder playlist", "Move videos up or down"],
-              ["removeVideo", "Remove videos", "Delete videos from the queue"],
-              ["addVideo", "Add videos", "Add videos to the shared queue"],
-              ["changeVideo", "Choose videos", "Start another playlist video"],
-            ].map(([key, label, description]) => (
-              <div className="perm-toggle-row" key={key}>
+        <div className="modal-backdrop" onClick={() => setSelectedMember(null)}>
+          <div className="modal-glass-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Member Permissions</h3>
+              <button className="modal-close-btn" onClick={() => setSelectedMember(null)}>✕</button>
+            </div>
+            <p className="modal-subtitle">
+              Manage what <strong>@{selectedMember.member.username || "user"}</strong> can do in this Jam:
+            </p>
+
+            {permissionError && <div className="error-alert">{permissionError}</div>}
+
+            <div className="permissions-list">
+              <div className="permission-row">
                 <div>
-                  <div className="label">{label}</div>
-                  <div className="desc">{description}</div>
+                  <div className="perm-label">Add Videos to Queue</div>
+                  <div className="perm-hint">Can search or paste YouTube links</div>
                 </div>
-                <label className="switch">
+                <label className="toggle-switch">
                   <input
                     type="checkbox"
-                    checked={Boolean(selectedMember.member.permissions?.[key])}
-                    onChange={(event) => togglePermission(key, event.target.checked)}
+                    checked={Boolean(selectedMember.member.permissions?.addVideo)}
+                    onChange={(e) => togglePermission("addVideo", e.target.checked)}
                   />
-                  <span className="track" />
+                  <span className="toggle-slider" />
                 </label>
               </div>
-            ))}
 
-            <div className="perm-toggle-row" style={{ marginTop: 18 }}>
-              <div>
-                <div className="label">Kick &amp; Block</div>
-                <div className="desc">Remove this member and prevent them from rejoining this room.</div>
+              <div className="permission-row">
+                <div>
+                  <div className="perm-label">Change Current Video</div>
+                  <div className="perm-hint">Can skip or select any video in queue to play</div>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedMember.member.permissions?.changeVideo)}
+                    onChange={(e) => togglePermission("changeVideo", e.target.checked)}
+                  />
+                  <span className="toggle-slider" />
+                </label>
               </div>
-              <button
-                className="btn btn-danger btn-sm"
-                disabled={moderationBusy}
-                onClick={() => handleKickAndBlock(selectedMember.uid)}
-              >
-                Kick &amp; Block
-              </button>
+
+              <div className="permission-row">
+                <div>
+                  <div className="perm-label">Reorder Queue</div>
+                  <div className="perm-hint">Can move videos up or down in the playlist</div>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedMember.member.permissions?.editOrder)}
+                    onChange={(e) => togglePermission("editOrder", e.target.checked)}
+                  />
+                  <span className="toggle-slider" />
+                </label>
+              </div>
+
+              <div className="permission-row">
+                <div>
+                  <div className="perm-label">Remove Videos from Queue</div>
+                  <div className="perm-hint">Can delete songs from the playlist</div>
+                </div>
+                <label className="toggle-switch">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedMember.member.permissions?.removeVideo)}
+                    onChange={(e) => togglePermission("removeVideo", e.target.checked)}
+                  />
+                  <span className="toggle-slider" />
+                </label>
+              </div>
             </div>
 
-            {permissionError && <div className="error-text">{permissionError}</div>}
-            <button className="btn btn-outline" onClick={() => setSelectedMember(null)} style={{ marginTop: 18 }}>Done</button>
+            <div className="modal-danger-section">
+              <button
+                className="btn btn-danger btn-sm"
+                onClick={() => handleKickAndBlock(selectedMember.uid)}
+                disabled={moderationBusy}
+                style={{ width: "100%" }}
+              >
+                {moderationBusy ? <span className="spin" /> : "Kick & Block Member"}
+              </button>
+            </div>
           </div>
         </div>
       )}

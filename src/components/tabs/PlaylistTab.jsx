@@ -1,47 +1,36 @@
 import React, { useState } from "react";
 import { useRoomPlayer } from "../../context/RoomPlayerContext.jsx";
 import { addVideoToPlaylist, removePlaylistItem, reorderPlaylistItem } from "../../utils/roomRepository.js";
-import { extractYoutubeVideoId, fetchYouTubeTitle, getYouTubeThumbnailUrl, formatTime } from "../../utils/youtube.js";
+import { extractYoutubeVideoId, fetchYouTubeTitle, getYouTubeThumbnailUrl } from "../../utils/youtube.js";
 import AddVideoModal from "../AddVideoModal.jsx";
 
-// Any room member can add, reorder, remove, and play items — no per-member
-// permission gate. The host is still the one whose client drives
-// auto-advance-on-end (see RoomPlayerContext), which keeps that one thing
-// deterministic without restricting everyday queue/playback actions.
 export default function PlaylistTab({ roomCode }) {
-  const { playlist, playerState, localTime, duration, isHost, canAddVideo, canEditOrder, canRemoveVideo, canChangeVideo, canControlPlayback, handlePlayPause, handleSyncWithHost, handleSeekByRatio, handleNext, playItemNow } = useRoomPlayer();
+  const {
+    playlist,
+    playerState,
+    isHost,
+    canAddVideo,
+    canEditOrder,
+    canRemoveVideo,
+    canChangeVideo,
+    playItemNow
+  } = useRoomPlayer();
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState("");
-  const [synced, setSynced] = useState(false);
-  const [seeking, setSeeking] = useState(false);
-
-  function handleSeekPointerDown(e) {
-    if (!canControlPlayback || !duration) return;
-    setSeeking(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
-    seekFromPointer(e, false);
-  }
-
-  function seekFromPointer(e, commit = true) {
-    if (!duration) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    handleSeekByRatio(ratio, commit);
-  }
-
-  function handleSeekPointerMove(e) {
-    if (canControlPlayback && seeking) seekFromPointer(e, false);
-  }
-
-  function handleSeekPointerUp(e) {
-    if (canControlPlayback && seeking) seekFromPointer(e);
-    setSeeking(false);
-  }
 
   async function handleAddVideo(urlOrId) {
     if (!canAddVideo) return;
-    const item = await addVideoToPlaylist(roomCode, urlOrId, extractYoutubeVideoId, fetchYouTubeTitle, getYouTubeThumbnailUrl);
-    if (!playerState?.currentVideoId && isHost) playItemNow(item);
+    const item = await addVideoToPlaylist(
+      roomCode,
+      urlOrId,
+      extractYoutubeVideoId,
+      fetchYouTubeTitle,
+      getYouTubeThumbnailUrl
+    );
+    if (!playerState?.currentVideoId && isHost && item) {
+      playItemNow(item);
+    }
   }
 
   async function handleRemove(item) {
@@ -69,85 +58,150 @@ export default function PlaylistTab({ roomCode }) {
     }
   }
 
-  function handleSync() {
-    handleSyncWithHost();
-    setSynced(true);
-    window.setTimeout(() => setSynced(false), 2000);
-  }
-
-  const nowPlayingTitle = playerState?.currentVideoTitle || "Nothing playing yet";
-
   return (
-    <div>
-      <div className="now-playing">
-        <div className="title-row">
-          <div className="t">{nowPlayingTitle}</div>
-          <div className="title-actions">
-            {canChangeVideo && <button className="icon-btn" title="Play next in queue" onClick={handleNext}>⏭</button>}
-            {isHost ? (
-              <span className="host-status">HOST</span>
-            ) : (
-              <button className="btn btn-outline btn-sm" onClick={handleSync} disabled={synced || !playerState?.currentVideoId}>
-                {synced ? "Synced" : "Sync with host"}
+    <div className="tab-pane-content playlist-pane">
+      {/* Pane Top Header */}
+      <div className="pane-header-row">
+        <div className="pane-title-area">
+          <h3>Queue</h3>
+          <span className="count-pill">{playlist?.length || 0}</span>
+        </div>
+        {canAddVideo && (
+          <button
+            className="btn btn-primary btn-sm add-video-cta"
+            onClick={() => setShowAddModal(true)}
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>Add Video</span>
+          </button>
+        )}
+      </div>
+
+      {error && <div className="error-alert">{error}</div>}
+
+      {/* Queue List */}
+      <div className="playlist-scroll-list">
+        {!playlist || playlist.length === 0 ? (
+          <div className="empty-state-card">
+            <div className="empty-icon-circle">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m16 6 4 14" />
+                <path d="M12 6v14" />
+                <path d="M8 8v12" />
+                <path d="M4 4v16" />
+              </svg>
+            </div>
+            <h4>Queue is empty</h4>
+            <p>Paste a YouTube video or Shorts link to start jamming together!</p>
+            {canAddVideo && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowAddModal(true)}
+                style={{ marginTop: 12 }}
+              >
+                ＋ Add First Video
               </button>
             )}
           </div>
-        </div>
-        <div className="transport">
-          {canControlPlayback && <button onClick={handlePlayPause}>{playerState?.isPlaying ? "⏸" : "▶"}</button>}
-          <span className="seek-time">{formatTime(localTime)}</span>
-          <div
-            className={`seek-bar ${seeking ? "seeking" : ""}`}
-            onPointerDown={handleSeekPointerDown}
-            onPointerMove={handleSeekPointerMove}
-            onPointerUp={handleSeekPointerUp}
-            onPointerCancel={handleSeekPointerUp}
-          >
-            <div className="fill" style={{ width: duration ? `${(localTime / duration) * 100}%` : "0%" }} />
-          </div>
-          <span className="seek-time">{formatTime(duration)}</span>
-        </div>
-      </div>
-
-      <div className="section-head">
-        <h3>Jam Queue ({playlist.length})</h3>
-        {canAddVideo && <button className="btn btn-primary btn-sm" onClick={() => setShowAddModal(true)}>＋ Add Video</button>}
-      </div>
-
-      {error && <div className="error-text" style={{ marginBottom: 10 }}>{error}</div>}
-
-      {playlist.length === 0 ? (
-        <div className="empty-block">No videos yet — add the first one to get the Jam started.</div>
-      ) : (
+        ) : (
           playlist.map((item, i) => {
-          const isActive = item.videoId === playerState?.currentVideoId;
-          return (
-            <div key={item.id || `${item.videoId}-${item.addedAt || i}`} className={`list-row ${isActive ? "active" : ""}`}>
-              <img className="thumb" src={item.thumbnailUrl} alt="" onClick={() => canChangeVideo && playItemNow(item)} style={{ cursor: canChangeVideo ? "pointer" : "default" }} />
-              <div className="info" onClick={() => canChangeVideo && playItemNow(item)} style={{ cursor: canChangeVideo ? "pointer" : "default" }}>
-                <div className="t">{item.title}</div>
-                <div className="by">Added by @{item.addedByUsername}</div>
+            const isActive = item.videoId === playerState?.currentVideoId;
+            return (
+              <div
+                key={item.id || `${item.videoId}-${item.addedAt || i}`}
+                className={`queue-item-card ${isActive ? "active-track" : ""}`}
+              >
+                {/* Thumbnail with overlay play trigger */}
+                <div
+                  className="queue-thumb-wrap"
+                  onClick={() => canChangeVideo && playItemNow(item)}
+                  style={{ cursor: canChangeVideo ? "pointer" : "default" }}
+                >
+                  <img
+                    className="queue-thumb-img"
+                    src={item.thumbnailUrl || `https://img.youtube.com/vi/${item.videoId}/hqdefault.jpg`}
+                    alt=""
+                    loading="lazy"
+                  />
+                  {isActive && (
+                    <div className="queue-playing-indicator">
+                      <div className="eq-bar bar-1" />
+                      <div className="eq-bar bar-2" />
+                      <div className="eq-bar bar-3" />
+                    </div>
+                  )}
+                  {canChangeVideo && !isActive && (
+                    <div className="queue-thumb-hover-play">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+
+                {/* Info Text */}
+                <div
+                  className="queue-item-info"
+                  onClick={() => canChangeVideo && playItemNow(item)}
+                  style={{ cursor: canChangeVideo ? "pointer" : "default" }}
+                >
+                  <div className="queue-item-title" title={item.title}>
+                    {item.title}
+                  </div>
+                  <div className="queue-item-meta">
+                    <span className="queue-curator">@{item.addedByUsername || "member"}</span>
+                    {isActive && <span className="now-playing-tag">PLAYING</span>}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="queue-actions">
+                  {canEditOrder && (
+                    <div className="reorder-button-group">
+                      <button
+                        className="queue-btn"
+                        title="Move Up"
+                        onClick={() => handleMove(item, -1)}
+                        disabled={i === 0}
+                      >
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="18 15 12 9 6 15" />
+                        </svg>
+                      </button>
+                      <button
+                        className="queue-btn"
+                        title="Move Down"
+                        onClick={() => handleMove(item, 1)}
+                        disabled={i === playlist.length - 1}
+                      >
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+
+                  {canRemoveVideo && (
+                    <button
+                      className="queue-btn delete-btn"
+                      title="Remove from queue"
+                      onClick={() => handleRemove(item)}
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="actions">
-                {canEditOrder && <>
-                  <button title="Move up" onClick={() => handleMove(item, -1)} disabled={i === 0}>▲</button>
-                  <button title="Move down" onClick={() => handleMove(item, 1)} disabled={i === playlist.length - 1}>▼</button>
-                </>}
-                {canRemoveVideo && (
-                  <button title="Remove" onClick={() => handleRemove(item)}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6"></polyline>
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                      <line x1="10" y1="11" x2="10" y2="17"></line>
-                      <line x1="14" y1="11" x2="14" y2="17"></line>
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })
-      )}
+            );
+          })
+        )}
+      </div>
 
       {showAddModal && (
         <AddVideoModal onAdd={handleAddVideo} onClose={() => setShowAddModal(false)} />

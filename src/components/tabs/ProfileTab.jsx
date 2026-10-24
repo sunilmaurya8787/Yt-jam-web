@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { leaveRoom, signOutUser, updateRoomMeta } from "../../utils/roomRepository.js";
+import { leaveRoom, deleteRoom, updateRoomMeta } from "../../utils/roomRepository.js";
+import ConfirmModal from "../ConfirmModal.jsx";
 
 export default function ProfileTab({ roomCode, meta, memberCount, isHost, onLeaveRoom }) {
   const { user, profile } = useAuth();
   const [copied, setCopied] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const name = profile?.name || user?.displayName || "Jammer";
   const username = profile?.username || "";
@@ -13,6 +17,7 @@ export default function ProfileTab({ roomCode, meta, memberCount, isHost, onLeav
   const [roomDescription, setRoomDescription] = useState(meta?.description || "");
   const [saving, setSaving] = useState(false);
   const [settingsError, setSettingsError] = useState("");
+  const [savedSuccess, setSavedSuccess] = useState(false);
 
   useEffect(() => {
     setRoomName(meta?.name || "");
@@ -22,8 +27,11 @@ export default function ProfileTab({ roomCode, meta, memberCount, isHost, onLeav
   async function saveRoomSettings() {
     setSaving(true);
     setSettingsError("");
+    setSavedSuccess(false);
     try {
       await updateRoomMeta(roomCode, { name: roomName, description: roomDescription });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2500);
     } catch (err) {
       setSettingsError(err.message || "Couldn't save room settings.");
     } finally {
@@ -34,108 +42,195 @@ export default function ProfileTab({ roomCode, meta, memberCount, isHost, onLeav
   function copyCode() {
     navigator.clipboard.writeText(roomCode).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setTimeout(() => setCopied(false), 1800);
     });
   }
 
   function shareCode() {
     if (navigator.share) {
-      navigator.share({ title: "Join my YouTube Jam", text: `Join my Jam with code ${roomCode}` }).catch(() => {});
+      navigator.share({
+        title: "Join my YouTube Jam",
+        text: `Watch YouTube together with me on Jam! Room code: ${roomCode}`,
+        url: window.location.href
+      }).catch(() => {});
     } else {
       copyCode();
     }
   }
 
-  async function handleLeave() {
+  async function confirmLeave() {
     setLeaving(true);
     try {
       await leaveRoom(roomCode);
       onLeaveRoom();
     } finally {
       setLeaving(false);
+      setShowLeaveConfirm(false);
+    }
+  }
+
+  async function confirmDelete() {
+    setDeleting(true);
+    try {
+      await deleteRoom(roomCode);
+      onLeaveRoom();
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
     }
   }
 
   return (
-    <div>
-      <div className="profile-card">
-        <div className="avatar avatar-lg" style={{ margin: "0 auto 14px" }}>
+    <div className="tab-pane-content profile-pane">
+      {/* Profile Card */}
+      <div className="user-profile-card">
+        <div className="user-avatar-lg">
           {name.charAt(0).toUpperCase()}
         </div>
-        <h2>{name}</h2>
-        {username && <div className="handle"># {username}</div>}
-        <div className="email-row">
-          <svg viewBox="0 0 24 24" width="16" height="16" style={{ display: 'inline-block', marginRight: '6px', verticalAlign: 'middle' }} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="4" width="20" height="16" rx="2" />
-            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-          </svg>
-          {user?.email}
-        </div>
-      </div>
-
-      <div className="eyebrow">Current Jam Room</div>
-      <div className="room-stats-grid">
-        <div className="room-stat-card">
-          <div className="room-stat-label">Room</div>
-          <div className="room-stat-value code">{roomCode}</div>
-          {isHost && <span className="created-tag">★ HOST</span>}
-        </div>
-        <div className="room-stat-card">
-          <div className="room-stat-label">Joined</div>
-          <div className="room-stat-value">{memberCount} / {meta?.maxMembers || 20}</div>
-          <div className="room-stat-hint">members</div>
-        </div>
-        <div className="room-stat-card">
-          <div className="room-stat-label">Expires</div>
-          <div className="room-stat-value room-expiry-value">
-            {meta?.expiresAt > 0 ? new Date(meta.expiresAt).toLocaleString() : "Never expires"}
+        <div className="user-meta">
+          <h3 className="user-name">{name}</h3>
+          {username && <span className="user-handle-pill">@{username}</span>}
+          <div className="user-email-text">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2" />
+              <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+            </svg>
+            <span>{user?.email}</span>
           </div>
         </div>
       </div>
-      <div className="two-col">
-        <button className="btn btn-outline" onClick={copyCode}>
-          <svg viewBox="0 0 24 24" width="16" height="16" style={{ display: 'inline-block', marginRight: '6px', verticalAlign: 'middle' }} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M16 4H2v14a2 2 0 0 0 2 2h12V6a2 2 0 0 0-2-2Z" />
-            <path d="M22 6v12a2 2 0 0 1-2 2h-6" />
+
+      {/* Room Stats Cards */}
+      <div className="section-label">Room Information</div>
+      <div className="room-stats-grid">
+        <div className="stat-card">
+          <div className="stat-label">Room Code</div>
+          <div className="stat-value code-font">{roomCode}</div>
+          <span className="stat-tag">{isHost ? "★ You are Host" : "Member"}</span>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-label">Capacity</div>
+          <div className="stat-value">{memberCount} / {meta?.maxMembers || 20}</div>
+          <span className="stat-hint">Active members</span>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-label">Expires</div>
+          <div className="stat-value small-text">
+            {meta?.expiresAt > 0
+              ? new Date(meta.expiresAt).toLocaleTimeString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+              : "Never"}
+          </div>
+          <span className="stat-hint">{meta?.expiresAt > 0 ? "Auto-closes" : "Permanent"}</span>
+        </div>
+      </div>
+
+      {/* Quick Action Share Buttons */}
+      <div className="action-button-row">
+        <button className="btn btn-outline" onClick={copyCode} style={{ flex: 1 }}>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
           </svg>
-          {copied ? "Copied!" : "Copy Code"}
+          <span>{copied ? "Copied!" : "Copy Code"}</span>
         </button>
-        <button className="btn btn-primary" onClick={shareCode}>
-          <svg viewBox="0 0 24 24" width="16" height="16" style={{ display: 'inline-block', marginRight: '6px', verticalAlign: 'middle' }} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 2 11 13M22 2l-7 21-4-9-9-4 21-7Z" />
+
+        <button className="btn btn-outline" onClick={shareCode} style={{ flex: 1 }}>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="18" cy="5" r="3" />
+            <circle cx="6" cy="12" r="3" />
+            <circle cx="18" cy="19" r="3" />
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
           </svg>
-          Share Room
+          <span>Invite Friends</span>
         </button>
       </div>
 
-      <div className="eyebrow">Session & Account</div>
-      {isHost && <>
-        <div className="eyebrow">Room Settings</div>
-        <div className="field">
-          <label>Room Name</label>
-          <input value={roomName} onChange={(e) => setRoomName(e.target.value)} maxLength={60} />
+      {/* Host Settings */}
+      {isHost && (
+        <div className="host-settings-card">
+          <h4>Room Settings</h4>
+          <div className="field-group">
+            <label>Room Name</label>
+            <input
+              type="text"
+              value={roomName}
+              onChange={(e) => setRoomName(e.target.value)}
+              placeholder="e.g. Friday Movie Jam"
+              maxLength={60}
+            />
+          </div>
+          <div className="field-group">
+            <label>Description</label>
+            <textarea
+              value={roomDescription}
+              onChange={(e) => setRoomDescription(e.target.value)}
+              placeholder="What are we watching today?"
+              maxLength={180}
+              rows={2}
+            />
+          </div>
+
+          {settingsError && <div className="error-alert">{settingsError}</div>}
+          {savedSuccess && <div className="success-alert">Room settings saved successfully!</div>}
+
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={saveRoomSettings}
+            disabled={saving || !roomName.trim()}
+          >
+            {saving ? <span className="spin" /> : "Save Changes"}
+          </button>
         </div>
-        <div className="field">
-          <label>Description</label>
-          <textarea value={roomDescription} onChange={(e) => setRoomDescription(e.target.value)} maxLength={180} />
-        </div>
-        {settingsError && <div className="error-text">{settingsError}</div>}
-        <button className="btn btn-primary" onClick={saveRoomSettings} disabled={saving || !roomName.trim()} style={{ marginBottom: 10 }}>
-          {saving ? <span className="spin" /> : "Save Room Settings"}
+      )}
+
+      {/* Leave / Delete Room Button */}
+      <div className="leave-room-box" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <button
+          className="btn btn-outline"
+          onClick={() => setShowLeaveConfirm(true)}
+          disabled={leaving || deleting}
+        >
+          {leaving ? <span className="spin" /> : "Leave Watch Party"}
         </button>
-      </>}
-      
-      <div className="two-col">
-        <button className="btn btn-outline" onClick={handleLeave} disabled={leaving}>
-          {leaving ? <span className="spin" /> : "→ Leave Room"}
-        </button>
-        <button className="btn btn-danger" onClick={signOutUser}>
-          <svg viewBox="0 0 24 24" width="16" height="16" style={{ display: 'inline-block', marginRight: '6px', verticalAlign: 'middle' }} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M10 3H6a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h4M16 17l4-4m0 0-4-4m4 4H9" />
-          </svg>
-          Sign Out
-        </button>
+
+        {isHost && (
+          <button
+            className="btn btn-danger"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={deleting || leaving}
+          >
+            {deleting ? <span className="spin" /> : "Delete Jam for Everyone"}
+          </button>
+        )}
       </div>
+
+      {/* Custom Confirmation Modals */}
+      <ConfirmModal
+        isOpen={showLeaveConfirm}
+        title="Leave Watch Party?"
+        message="Are you sure you want to leave this Jam Room?"
+        confirmText="Leave Room"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        busy={leaving}
+        onConfirm={confirmLeave}
+        onCancel={() => !leaving && setShowLeaveConfirm(false)}
+      />
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Delete Jam for Everyone?"
+        message={`Are you sure you want to permanently delete room #${roomCode}? All connected members will be removed.`}
+        confirmText="Delete Jam"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        busy={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => !deleting && setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }
