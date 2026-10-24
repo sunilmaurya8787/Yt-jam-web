@@ -1,9 +1,8 @@
 # YouTube Jam — Web
 
 Web version of the YouTube Jam Android app, built with React + Vite and the
-Firebase Web SDK (modular v10), reading/writing the exact same Realtime
-Database paths and field names as the Kotlin app (see `Models.kt` /
-`RoomRepository.kt`).
+Firebase Web SDK (modular v10), reading/writing the same Realtime Database
+paths and field names as the Android app.
 
 The "browse YouTube" tab from the mobile app is intentionally left out —
 YouTube blocks embedding its own site in an iframe, so on web you add videos
@@ -17,11 +16,10 @@ and the Playlist tab plays them with the YouTube IFrame Player API.
    npm install
    ```
 
-2. Firebase config lives in `.env` (already filled in with your project's
-   values, matching the snippet you pasted from the Firebase console). If
-   you ever rotate keys or point this at a different Firebase project, edit
-   `.env` — never commit it (it's already in `.gitignore`). `.env.example`
-   shows the shape without values, safe to commit.
+2. Set the Firebase config values as `VITE_FIREBASE_*` environment variables.
+   For local development, put them in a `.env` file in the project root.
+   Never commit `.env`; it is ignored by Git. On Netlify, set the variables in
+   the site's environment variable settings and trigger a new build.
 
    Note: unlike a server secret, a Firebase **client** config (including
    `apiKey`) is not sensitive on its own — Firebase's own docs say it's safe
@@ -65,7 +63,7 @@ and the Playlist tab plays them with the YouTube IFrame Player API.
 
 ## Room administration and limits
 
-The web client uses the shared `RoomMeta` contract from `models.kt`:
+The web client uses the shared `RoomMeta` data contract:
 `hostUid`, `hostUsername`, `createdAt`, `name`, `description`, `maxMembers`,
 and `expiresAt` (milliseconds; `0` means no expiry).
 
@@ -81,12 +79,11 @@ and `expiresAt` (milliseconds; `0` means no expiry).
 - The host can edit the room name and description in the Profile tab under
    Room Settings.
 
-Deploy `firebase-rules-no-permissions.json` as the Realtime Database rules,
-then add the intended administrator UID manually in the Firebase console.
-The `admins` node is intentionally not writable by either client.
+Configure the Realtime Database rules in the Firebase console, then add the
+intended administrator UID manually. The `admins` node is intentionally not
+writable by either client.
 
 ## Database rules
 
-This expects the finalized rules in `firebase-rules-no-permissions.json` to be
-deployed in the Firebase console. The rules enforce admin-only configuration,
+The Firebase console must have rules that enforce admin-only configuration,
 room-creation access, member capacity, and room expiry on the server.

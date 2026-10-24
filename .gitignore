@@ -1,0 +1,14 @@
+# Dependencies and generated build output
+node_modules/
+dist/
+
+# Local environment files
+.env*
+!.env.example
+
+# Android/Firebase files not used by the Netlify web build
+/models.kt
+/firebase-rules-no-permissions.json
+
+# macOS metadata
+.DS_Store
